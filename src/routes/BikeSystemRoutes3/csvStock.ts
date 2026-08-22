@@ -12,6 +12,7 @@ import {
   getCSVBatchesByDate,
   getCSVStockByStockId,
   getCSVStocks,
+  getAssignedCSVStockWithCustomers,
   getStocksByBatch,
   importCSVStock,
   unassignCSVStock,
@@ -68,6 +69,14 @@ router.get(
   protect,
   authorize("Super-Admin", "Branch-Admin"),
   getCSVStockAssignStats,
+);
+// Assigned CSV stock + buyer profiles for the Sales Report screen. Literal
+// path, so it must stay above the generic /:stockId below — see CLAUDE.md.
+router.get(
+  "/assigned",
+  protect,
+  authorize("Super-Admin", "Branch-Admin"),
+  getAssignedCSVStockWithCustomers,
 );
 //
 router.get(
