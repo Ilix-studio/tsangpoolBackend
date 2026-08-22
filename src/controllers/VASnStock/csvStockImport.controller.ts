@@ -10,6 +10,7 @@ import { StockConceptModel } from "../../models/BikeSystemModel2/StockConcept";
 import { CustomerVehicleModel } from "../../models/BikeSystemModel2/CustomerVehicleModel";
 import { SalesReportModel } from "../../models/SalesReport";
 import { getUserBranch, isBranchManager } from "../../types/user.types";
+import { attachCustomerProfiles } from "../../service/attachCustomerProfiles";
 
 /** Branch-Admin is always scoped to their own branch; Super-Admin may filter via ?branchId=. */
 function resolveCSVStockBranchFilter(req: Request): string | undefined {
@@ -723,6 +724,71 @@ export const unassignCSVStock = asyncHandler(
       message: "Stock unassigned",
       data: stock,
       reason,
+    });
+  }
+);
+
+/**
+ * @desc    CSV-imported stock that has been assigned to a customer, with the
+ *          buyer's profile attached. Peer of `getAssignedStockWithCustomers`
+ *          (manual StockConcept assignments) — the Sales Report screen shows
+ *          the two side by side.
+ * @route   GET /api/csv-stock/assigned
+ * @access  Private (Super-Admin, Branch-Admin)
+ */
+export const getAssignedCSVStockWithCustomers = asyncHandler(
+  async (req: Request, res: Response) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 15;
+    const skip = (page - 1) * limit;
+
+    // Mirrors getCSVStocks: only real CSV imports (not auto-registration
+    // placeholders) and not soft-deleted — narrowed to assigned rows.
+    const query: any = {
+      creationSource: "csv_import",
+      isActive: { $ne: false },
+      "stockStatus.status": "Sold",
+      "salesInfo.soldTo": { $exists: true },
+    };
+
+    const branchFilter = resolveCSVStockBranchFilter(req);
+    if (branchFilter) query["stockStatus.branchId"] = branchFilter;
+
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search as string, "i");
+      query.$or = [
+        { stockId: searchRegex },
+        { modelVariant: searchRegex },
+        { engineNumber: searchRegex },
+        { frameNumber: searchRegex },
+        { "salesInfo.invoiceNumber": searchRegex },
+      ];
+    }
+
+    const [stocks, total] = await Promise.all([
+      StockConceptCSVModel.find(query)
+        .populate("stockStatus.branchId", "branchName address")
+        .populate("salesInfo.soldTo", "phoneNumber")
+        .populate({
+          path: "salesInfo.customerVehicleId",
+          select:
+            "numberPlate registeredOwnerName registrationDate isPaid isFinance insurance",
+        })
+        .sort({ "salesInfo.soldDate": -1 })
+        .skip(skip)
+        .limit(limit),
+      StockConceptCSVModel.countDocuments(query),
+    ]);
+
+    const data = await attachCustomerProfiles(stocks);
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      pages: Math.ceil(total / limit),
+      currentPage: page,
+      data,
     });
   }
 );

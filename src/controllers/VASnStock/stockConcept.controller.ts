@@ -5,6 +5,7 @@ import { StockConceptModel } from "../../models/BikeSystemModel2/StockConcept";
 import logger from "../../utils/logger";
 import { StockConceptCSVModel } from "../../models/BikeSystemModel3/StockConceptCSV";
 import { isBranchManager } from "../../types/user.types";
+import { attachCustomerProfiles } from "../../service/attachCustomerProfiles";
 
 export const createStockItem = asyncHandler(
   async (req: Request, res: Response) => {
@@ -353,13 +354,15 @@ export const getAssignedStockWithCustomers = asyncHandler(
       .skip(skip)
       .limit(limit);
 
+    const data = await attachCustomerProfiles(stockItems);
+
     res.status(200).json({
       success: true,
-      count: stockItems.length,
+      count: data.length,
       total,
       pages: Math.ceil(total / limit),
       currentPage: page,
-      data: stockItems,
+      data,
     });
   },
 );
